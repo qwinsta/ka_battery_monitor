@@ -434,12 +434,40 @@ async def avg_panel_current(minutes: float = 2) -> float | None:
     return await asyncio.to_thread(_avg_charger_current_sync, "panel_c", minutes)
 
 
-def _avg_total_power_usage_sync(minutes: float, efficiency: float) -> float | None:
+async def avg_batt_current(minutes: float = 2) -> float | None:
+    """Average of the charger's own reported *battery-side* current -
+    "batt" in its status response (see PROTOCOL.md), a real sensor
+    reading at the charger's own battery-side terminals, not derived
+    from the battery's BMS or from the alternator/solar input side. Used
+    for the alternator-based "time to full" estimate instead of scaling
+    the alternator's own (input-side) current by an assumed conversion
+    efficiency (per Quinn 2026-11-06, same reasoning as
+    avg_total_power_usage switching away from CHARGER_EFFICIENCY) - this
+    is what's actually reaching the battery, measured, not guessed."""
+    return await asyncio.to_thread(_avg_charger_current_sync, "batt_c", minutes)
+
+
+def _avg_total_power_usage_sync(minutes: float) -> float | None:
     """Total power usage, smoothed over a trailing window rather than a
-    single noisy instantaneous reading. Total usage = battery current +
-    charger output, with the charger's side scaled down by `efficiency`
-    first (2026-09-14) since its reported source power isn't 100% of
-    what actually reaches the battery.
+    single noisy instantaneous reading. Total usage = (what the charger
+    says it's delivering to the battery side) - (what the battery's own
+    BMS says it's actually receiving) - any gap between those two is
+    power being drawn by something else on that same battery-side bus,
+    not the battery itself.
+
+    Previously this compared the charger's ALTERNATOR/SOLAR-side (input)
+    power against the battery's reading, with a fixed assumed efficiency
+    (CHARGER_EFFICIENCY, 2026-09-14) bridging the two sides of the DC-DC
+    conversion - that assumption is no longer needed: the charger's own
+    status response already reports a separate, independently-measured
+    "batt" v/c/p group (see PROTOCOL.md) taken at its own battery-side
+    terminals, not derived from the battery's BMS at all. Comparing that
+    directly against the battery's own reading needs no conversion-
+    efficiency guess at all, since both readings are already on the same
+    (battery) side of the conversion - and it's more accurate, since a
+    fixed 10% isn't actually what any specific charger does at any given
+    moment (per Quinn 2026-11-06, who pointed out the charger already
+    reports a real battery-side measurement of its own).
 
     Battery and charger samples arrive from independent async polling
     loops at slightly different times, so each charger sample is paired
@@ -452,7 +480,7 @@ def _avg_total_power_usage_sync(minutes: float, efficiency: float) -> float | No
             "SELECT ts, power FROM battery_samples WHERE ts >= ? ORDER BY ts", (since,)
         ).fetchall()
         charger_rows = conn.execute(
-            "SELECT ts, alt_p, panel_p FROM charger_samples WHERE ts >= ? ORDER BY ts", (since,)
+            "SELECT ts, batt_p FROM charger_samples WHERE ts >= ? ORDER BY ts", (since,)
         ).fetchall()
     finally:
         conn.close()
@@ -476,7 +504,7 @@ def _avg_total_power_usage_sync(minutes: float, efficiency: float) -> float | No
     values = []
     bi = 0
     n = len(battery_rows)
-    for c_ts, alt_p, panel_p in charger_rows:
+    for c_ts, batt_p in charger_rows:
         while bi + 1 < n and battery_rows[bi + 1][0] <= c_ts:
             bi += 1
         candidates = [battery_rows[bi]]
@@ -484,13 +512,12 @@ def _avg_total_power_usage_sync(minutes: float, efficiency: float) -> float | No
             candidates.append(battery_rows[bi + 1])
         nearest = min(candidates, key=lambda b: abs(b[0] - c_ts))
         battery_power = nearest[1] or 0
-        source_w = (alt_p or 0) + (panel_p or 0)
-        values.append(source_w * efficiency - battery_power)
+        values.append((batt_p or 0) - battery_power)
     return sum(values) / len(values) if values else None
 
 
-async def avg_total_power_usage(minutes: float = 2, efficiency: float = 0.9) -> float | None:
-    return await asyncio.to_thread(_avg_total_power_usage_sync, minutes, efficiency)
+async def avg_total_power_usage(minutes: float = 2) -> float | None:
+    return await asyncio.to_thread(_avg_total_power_usage_sync, minutes)
 
 
 def _has_data_sync(since: float, until: float) -> bool:
@@ -671,6 +698,33 @@ def _oldest_charger_ts_sync() -> float | None:
     finally:
         conn.close()
     return row[0] if row and row[0] is not None else None
+
+
+def _oldest_sample_ts_sync() -> float | None:
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT MIN(ts) FROM ("
+            "  SELECT MIN(ts) AS ts FROM battery_samples"
+            "  UNION ALL"
+            "  SELECT MIN(ts) AS ts FROM charger_samples"
+            ")"
+        ).fetchone()
+    finally:
+        conn.close()
+    return row[0] if row and row[0] is not None else None
+
+
+async def oldest_sample_ts() -> float | None:
+    """Earliest timestamp across either table, whichever reaches back
+    further - lets the day picker (and the solar generation card's own
+    day picker) know exactly how far back to offer days, rather than
+    guessing a fixed candidate window that could either come up short
+    (now that retention is size-governed, not a fixed day count - see
+    the module docstring) or waste probes checking days that can't
+    possibly have data (per Quinn 2026-11-06: "show all previous days
+    that have data")."""
+    return await asyncio.to_thread(_oldest_sample_ts_sync)
 
 
 async def accumulate_alltime_solar_wh():

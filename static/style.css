@@ -705,15 +705,7 @@ input[type="range"]::-moz-range-thumb {
   flex-wrap: wrap;
   margin-bottom: 8px;
 }
-.solar-gen-days {
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  max-width: 100%;
-}
-.solar-gen-days::-webkit-scrollbar { display: none; }
-.solar-gen-days button {
+.solar-gen-day-select {
   font: inherit;
   font-size: 11px;
   padding: 5px 10px;
@@ -723,15 +715,16 @@ input[type="range"]::-moz-range-thumb {
   color: var(--text-secondary);
   cursor: pointer;
   flex: none;
+  max-width: 100%;
 }
-.solar-gen-days button.active { background: var(--series-solar); border-color: transparent; color: #fff; }
-/* "More..." - a one-shot action menu (currently just "Last 30 days"),
-   not a persistent mode selector, so it's styled a touch quieter than
-   the day buttons it sits beside. */
-.solar-gen-more {
+/* "10 day overview" / "30 day overview" - one-shot actions, not a
+   persistent mode selector (no "active" state to track - picking one
+   just switches the chart below), styled a touch quieter than the day
+   picker they sit beside. */
+.solar-gen-days-row button {
   font: inherit;
   font-size: 11px;
-  padding: 5px 8px;
+  padding: 5px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;

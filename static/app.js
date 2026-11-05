@@ -173,12 +173,14 @@ function updateFlowDiagram(battery, chargerResult) {
 }
 
 function updateTotalPower(totalPowerW, totalPowerAvgW, totalPower1hrAvgW) {
-  // Server applies the assumed 10% charger conversion loss to all three
-  // figures (see config.py's CHARGER_EFFICIENCY). The live instantaneous
-  // reading is the headline number; the 2-minute average is shown
-  // smaller alongside it since it's naturally noisy sample-to-sample,
-  // and the 1-hour average underneath that smooths out even the slower
-  // swings to show the genuinely sustained draw (per Quinn 2026-09-30).
+  // Server computes all three as the charger's own battery-side power
+  // reading minus the battery's own reading - no conversion-efficiency
+  // guess involved (see server.py's _compute_total_power_usage_w). The
+  // live instantaneous reading is the headline number; the 2-minute
+  // average is shown smaller alongside it since it's naturally noisy
+  // sample-to-sample, and the 1-hour average underneath that smooths
+  // out even the slower swings to show the genuinely sustained draw
+  // (per Quinn 2026-09-30).
   setText("total-power-value", fmt(totalPowerW, 0));
   setText("total-power-avg-value", fmt(totalPowerAvgW, 0));
   setText("total-power-1hr-avg-value", fmt(totalPower1hrAvgW, 0));
@@ -692,12 +694,6 @@ const RANGE_SECONDS = {
   "12h": 12 * 3600, "24h": 24 * 3600,
 };
 
-// Must match config.CHARGER_EFFICIENCY on the server - the source term
-// is scaled down before comparing against the battery (assumed 10%
-// DC-DC conversion loss, per the charger's manual) so that loss isn't
-// misread as phantom device draw.
-const CHARGER_EFFICIENCY = 0.9;
-
 // Shared time window across all charts (unix seconds) - dragging any
 // chart pans all of them together so metrics stay comparable at a glance.
 let windowSince = Date.now() / 1000 - RANGE_SECONDS["15m"];
@@ -926,10 +922,25 @@ class LineChart {
     this.canvas.addEventListener("pointermove", (e) => onMove(e.clientX));
     this.canvas.addEventListener("pointerup", onUp);
     this.canvas.addEventListener("pointercancel", onUp);
+    // Belt-and-braces alongside the self-healing check in _bindHover:
+    // catch the up-event at the window level too, in case it never
+    // reaches the canvas at all (observed on Safari - pointer capture
+    // doesn't always redirect pointerup back to the capturing element).
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   }
 
   _bindHover() {
-    const move = (clientX) => {
+    const move = (clientX, mouseButtons) => {
+      // Self-healing: if the mouse is moving with no button actually
+      // held down, dragging cannot legitimately still be in progress -
+      // force-clear a stuck _dragging flag right here rather than
+      // trusting a pointerup/pointercancel to have fired. Safari in
+      // particular has had cases where the up-event doesn't land on the
+      // element pointer capture was set on, leaving _dragging stuck
+      // true forever and silently killing hover from then on (2026-11-06:
+      // "the hover over ... doesn't really work anymore" on Safari).
+      if (mouseButtons === 0 && this._dragging) this._dragging = false;
       if (this._dragging) return;
       this._hovering = true;
       const rect = this.canvas.getBoundingClientRect();
@@ -940,7 +951,7 @@ class LineChart {
       this._hovering = false;
       this.tooltip.style.visibility = "hidden";
     };
-    this.canvas.addEventListener("mousemove", (e) => move(e.clientX));
+    this.canvas.addEventListener("mousemove", (e) => move(e.clientX, e.buttons));
     this.canvas.addEventListener("mouseleave", leave);
     this.canvas.addEventListener(
       "touchstart",
@@ -1277,6 +1288,40 @@ function dayLabel(daysAgo, start) {
   return new Date(start * 1000).toLocaleDateString([], { weekday: "short", day: "numeric" });
 }
 
+// Shared by the main history day picker and the solar generation card's
+// own day picker - both need "every day that actually has data, oldest
+// to newest", derived from the real oldest sample on hand rather than a
+// fixed candidate window (per Quinn 2026-11-06: "show all previous days
+// that have data" - retention is governed by storage.MAX_DB_SIZE_BYTES,
+// not a fixed day count, so how far back it's safe to probe can move
+// over time). Falls back to a conservative 10-day guess if the lookup
+// itself fails, rather than showing nothing.
+async function fetchDaysWithData() {
+  let daysBack = 10;
+  try {
+    const res = await fetch("/api/oldest-sample-ts");
+    const data = await res.json();
+    if (data.ts !== null && data.ts !== undefined) {
+      const oldestDayStart = new Date(data.ts * 1000);
+      oldestDayStart.setHours(0, 0, 0, 0);
+      daysBack = Math.max(1, Math.round((localDayStart(0) - oldestDayStart.getTime() / 1000) / 86400) + 1);
+    }
+  } catch (e) {
+    // Fall back to the default above.
+  }
+
+  const starts = Array.from({ length: daysBack }, (_, i) => localDayStart(i));
+  try {
+    const res = await fetch(`/api/data-days?day_starts=${starts.join(",")}`);
+    const data = await res.json();
+    return starts.map((start, i) => ({ start, i, hasData: data.days[i].has_data }));
+  } catch (e) {
+    // Today (i === 0) still selectable even if this fails - everything
+    // else shows as unavailable rather than guessing.
+    return starts.map((start, i) => ({ start, i, hasData: i === 0 }));
+  }
+}
+
 async function renderDayPicker() {
   // Defensive: a stale cached index.html served alongside a fresher
   // app.js (or vice versa) would leave this element missing - happened
@@ -1287,40 +1332,17 @@ async function renderDayPicker() {
   // mismatch cascade into anything else breaking).
   if (!dayPickerSelectEl) return;
 
-  // Not pinned to a fixed "10 days" retention assumption - how far back
-  // actual data reaches depends on sample rate vs. the 25MB size cap
-  // (storage._enforce_size_cap_sync), which can hold more or less than
-  // 10 days' worth depending on usage. Probe a generous candidate
-  // window instead and let actual data availability decide how far the
-  // dropdown goes (per Quinn 2026-10-14) - each check is a single cheap
-  // indexed EXISTS query (storage._has_data_sync), batched into one
-  // request, so probing well past any realistic retention is still
-  // negligible cost.
-  const CANDIDATE_DAYS_BACK = 60;
-  const starts = Array.from({ length: CANDIDATE_DAYS_BACK }, (_, i) => localDayStart(i));
+  const days = await fetchDaysWithData();
 
-  let availability = starts.map(() => false);
-  try {
-    const res = await fetch(`/api/data-days?day_starts=${starts.join(",")}`);
-    const data = await res.json();
-    availability = data.days.map((d) => d.has_data);
-  } catch (e) {
-    // Leave everything showing as unavailable rather than guessing - see
-    // below, Today is kept regardless so the dropdown isn't ever empty.
-  }
-
-  // A dropdown rather than a row of up to 10 buttons (per the
-  // 2026-10-14 incident follow-up) - same single-bounded-day browsing,
-  // just without filling up the screen with a button per day. Only days
-  // that actually have data are listed (stops exactly where real
-  // retention stops, rather than always showing a fixed count of
-  // options down to "no data") - except Today (index 0), which is kept
-  // even before its first sample of the day has landed, as the obvious
-  // "back to today" option.
+  // A dropdown rather than a row of buttons (per the 2026-10-14 incident
+  // follow-up) - same single-bounded-day browsing, just without filling
+  // up the screen with a button per day. Only days that actually have
+  // data are listed (stops exactly where real retention stops) - except
+  // Today (index 0), which is kept even before its first sample of the
+  // day has landed, as the obvious "back to today" option.
   const placeholder = '<option value="">Pick a day&hellip;</option>';
-  const options = starts
-    .map((start, i) => ({ start, i, has_data: availability[i] }))
-    .filter(({ i, has_data }) => i === 0 || has_data)
+  const options = days
+    .filter(({ i, hasData }) => i === 0 || hasData)
     .map(({ start, i }) => {
       const selected = dayPickerSelectedStart === start ? "selected" : "";
       return `<option value="${start}" ${selected}>${dayLabel(i, start)}</option>`;
@@ -1475,53 +1497,47 @@ function solarGenDateLabel(dayStart) {
   return new Date(dayStart * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 }
 
-// Quick-access shortcut living right on the Solar Generation card itself
-// (Today + the 4 days before it) so switching which day's generation
-// you're looking at doesn't mean scrolling up to the main day picker -
-// that one still works too (see selectDay), this is just a closer copy
-// for this one chart specifically (per Quinn 2026-09-30). Anything
-// further back than this lives in the "More..." dropdown as a daily-
-// totals overview instead of more per-day buttons (2026-10-14), same
-// reasoning as the main day picker switching to a dropdown.
-const SOLAR_GEN_DAYS_BACK = 5;
-
 // "day": showing one day's intraday power curve (the normal case).
 // "overview": showing a Last-N-days daily-totals trend instead - see
 // loadSolarGenOverview().
 let solarGenMode = "day";
 
-function renderSolarGenDayButtons() {
-  const container = document.getElementById("solar-gen-days");
-  if (!container) return;
-  container.innerHTML = "";
-  for (let i = 0; i < SOLAR_GEN_DAYS_BACK; i++) {
-    const dayStart = localDayStart(i);
-    const btn = document.createElement("button");
-    btn.textContent = solarGenDateLabel(dayStart);
-    btn.classList.toggle("active", solarGenMode === "day" && dayStart === solarGenDayStart);
-    btn.addEventListener("click", () => loadSolarGenChart(dayStart));
-    container.appendChild(btn);
-  }
+// Every day that actually has data (same mechanism, and same
+// fetchDaysWithData() helper, as the main history day picker above) -
+// replaces the old fixed "Today + 4 days back" button row, which
+// couldn't reach further back than that no matter how much real history
+// existed (per Quinn 2026-11-06).
+const solarGenDaySelectEl = document.getElementById("solar-gen-day-select");
+
+async function renderSolarGenDaySelect() {
+  if (!solarGenDaySelectEl) return;
+  const days = await fetchDaysWithData();
+  const placeholder = '<option value="">Previous days&hellip;</option>';
+  const options = days
+    .filter(({ i, hasData }) => i === 0 || hasData)
+    .map(({ start, i }) => {
+      const selected = solarGenMode === "day" && solarGenDayStart === start ? "selected" : "";
+      return `<option value="${start}" ${selected}>${solarGenDateLabel(start)}</option>`;
+    });
+  solarGenDaySelectEl.innerHTML = placeholder + options.join("");
+  if (!(solarGenMode === "day" && solarGenDayStart !== null)) solarGenDaySelectEl.value = "";
 }
 
-// "More..." dropdown rather than separate buttons for each overview
-// range - two options (2026-10-14: added "Last 10 days" alongside the
-// existing 30-day one) is exactly the point where a dropdown earns its
-// keep over cluttering the row with more buttons.
-const SOLAR_OVERVIEW_DAYS_BY_CHOICE = { "10d": 10, "30d": 30 };
-
-const solarGenMoreEl = document.getElementById("solar-gen-more");
-if (solarGenMoreEl) {
-  solarGenMoreEl.addEventListener("change", () => {
-    const choice = solarGenMoreEl.value;
-    // A one-shot action menu, not a persistent selector - reset to the
-    // placeholder immediately so it doesn't look like a "current mode"
-    // indicator sitting next to the day buttons' own active state.
-    solarGenMoreEl.value = "";
-    const daysBack = SOLAR_OVERVIEW_DAYS_BY_CHOICE[choice];
-    if (daysBack) loadSolarGenOverview(daysBack);
+if (solarGenDaySelectEl) {
+  solarGenDaySelectEl.addEventListener("change", () => {
+    if (solarGenDaySelectEl.value) loadSolarGenChart(parseFloat(solarGenDaySelectEl.value));
   });
 }
+
+// "10 day overview" / "30 day overview" - plain buttons rather than
+// tucked into a "More..." dropdown (2026-11-06: now that the day picker
+// above is itself a dropdown, nesting another choice inside a second
+// dropdown just added a click for no benefit - these are exactly two
+// options, which a dropdown doesn't earn its keep over).
+const solarGen10dBtn = document.getElementById("solar-gen-10d-btn");
+const solarGen30dBtn = document.getElementById("solar-gen-30d-btn");
+if (solarGen10dBtn) solarGen10dBtn.addEventListener("click", () => loadSolarGenOverview(10));
+if (solarGen30dBtn) solarGen30dBtn.addEventListener("click", () => loadSolarGenOverview(30));
 
 function fmtSolarOverviewAxisLabel(wh) {
   return wh >= 1000 ? (wh / 1000).toFixed(1) : Math.round(wh).toString();
@@ -1531,7 +1547,7 @@ async function loadSolarGenOverview(daysBack) {
   solarGenMode = "overview";
   solarGenDayStart = null;
   solarGenIsToday = false; // belt-and-braces alongside the solarGenMode check in the refresh interval below
-  renderSolarGenDayButtons(); // clears the day buttons' active state
+  renderSolarGenDaySelect(); // clears the day picker's selection
 
   const dateLabelEl = document.getElementById("solar-gen-date");
   if (dateLabelEl) dateLabelEl.textContent = `Last ${daysBack} days`;
@@ -1580,7 +1596,7 @@ async function loadSolarGenChart(dayStart) {
   charts.solarGen.yLabelFormatter = fmtSolarAxisLabel;
   solarGenDayStart = dayStart;
   solarGenIsToday = dayStart === localDayStart(0);
-  renderSolarGenDayButtons(); // keeps the active button in sync however this got called - the row itself, the main day picker, or the periodic auto-refresh
+  renderSolarGenDaySelect(); // keeps the dropdown's selection in sync however this got called - itself, the main day picker, or the periodic auto-refresh
   const windowStart = dayStart + SOLAR_CHART_START_HOUR * 3600;
   const windowEnd = dayStart + SOLAR_CHART_END_HOUR * 3600;
 
@@ -1731,14 +1747,21 @@ async function loadHistory() {
   ]);
 
   // Total power usage: joined per charger sample timestamp against the
-  // nearest battery sample, with the assumed charger conversion loss
-  // applied (see config.py's CHARGER_EFFICIENCY for the formula).
+  // nearest battery sample. The charger's own reported *battery-side*
+  // power ("batt_p" - a real sensor reading at its own battery-side
+  // terminals, per PROTOCOL.md, not derived from the battery's BMS)
+  // minus the battery's own reported power - no conversion-efficiency
+  // guess needed, since both readings are already on the battery side
+  // of the charger's internal DC-DC conversion (per Quinn 2026-11-06 -
+  // previously this scaled the alternator/solar INPUT-side power by a
+  // fixed assumed efficiency instead, which was a guess rather than a
+  // measurement).
   const loadsPts = chargerRows.map((r) => {
     const nearestBatt = nearestByTs(battery, r.ts);
     if (!nearestBatt) return { x: r.ts, y: null };
-    const totalSourceW = ((r.alt_p || 0) + (r.panel_p || 0)) * CHARGER_EFFICIENCY;
+    const chargerBattSideW = r.batt_p || 0;
     const battNetW = nearestBatt.power || 0;
-    return { x: r.ts, y: totalSourceW - battNetW };
+    return { x: r.ts, y: chargerBattSideW - battNetW };
   });
   charts.loads.setSeries([{ label: "Total power usage", color: getVar("--series-loads"), points: loadsPts }]);
 }

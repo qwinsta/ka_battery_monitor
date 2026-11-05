@@ -28,10 +28,15 @@ ALT_CURRENT_MIN = 5
 ALT_CURRENT_MAX = 56
 ALT_CURRENT_DEFAULT = 40
 
-# Assumed DC-DC conversion loss (charger manual: not 100% efficient
-# converting alternator/solar input to battery-side output). Used to
-# correct the "total power usage" calculation so charger loss isn't
-# misattributed to phantom device draw. Not empirically measured/
-# calibrated for your specific charger - revisit if real testing
-# suggests a different figure.
-CHARGER_EFFICIENCY = 0.9
+# Note: there used to be a CHARGER_EFFICIENCY constant here, an assumed
+# 10% DC-DC conversion loss used to correct "total power usage" so the
+# charger's own internal loss wasn't misattributed to phantom device
+# draw. Removed (per Quinn 2026-11-06) because it was a guess the
+# calculation no longer needs: the charger's own status response
+# already reports a separate, independently-measured "batt" v/c/p group
+# (see PROTOCOL.md) at its own battery-side terminals, not derived from
+# the alternator/solar input side or the battery's BMS at all. Comparing
+# that directly against the battery's own reading needs no efficiency
+# correction, since both are already on the battery side - see
+# server.py's _compute_total_power_usage_w and
+# storage.avg_total_power_usage.

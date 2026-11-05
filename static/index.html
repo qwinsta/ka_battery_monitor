@@ -118,12 +118,11 @@
         <span class="solar-gen-unit" id="solar-gen-unit"></span>
       </div>
       <div class="solar-gen-days-row">
-        <div class="solar-gen-days" id="solar-gen-days"><!-- populated by app.js --></div>
-        <select class="solar-gen-more" id="solar-gen-more">
-          <option value="">More&hellip;</option>
-          <option value="10d">Last 10 days</option>
-          <option value="30d">30 day overview</option>
-        </select>
+        <!-- Every day that actually has data (same mechanism as the main
+             history day picker above) - see app.js's fetchDaysWithData(). -->
+        <select class="solar-gen-day-select" id="solar-gen-day-select"><option value="">Previous days&hellip;</option></select>
+        <button id="solar-gen-10d-btn">10 day overview</button>
+        <button id="solar-gen-30d-btn">30 day overview</button>
       </div>
       <div class="solar-gen-total">
         <div class="solar-gen-total-label">Total Generated</div>
@@ -268,7 +267,7 @@
     </div>
 
     <footer>
-      Assumes a 10% DC-DC conversion loss (charger manual: not 100% efficient converting alternator/solar input to battery-side output) when calculating total power usage.<br>
+      Total power usage = the charger's own battery-side power reading minus the battery's own reading - no assumed conversion loss involved, both are real measurements.<br>
       KickAss Battery Monitor &middot; <a href="https://github.com/qwinsta/ka_battery_monitor" target="_blank" rel="noopener">GitHub</a> &middot; <a href="/docs">API</a>
     </footer>
   </div>

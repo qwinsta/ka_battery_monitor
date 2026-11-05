@@ -62,20 +62,23 @@ app = FastAPI(lifespan=lifespan)
 
 
 def _compute_total_power_usage_w(battery_data: dict | None, charger_data: dict | None) -> float | None:
-    """The battery's own current reading
-    and the charger's reported battery-side current are two independent
-    measurements of the same node - the difference approximates total
-    power being drawn by everything connected to the system, whether it's
-    fed straight from the charger or via the battery.
+    """The battery's own reported power and the charger's own reported
+    *battery-side* power ("batt" in its status response - see
+    PROTOCOL.md - a real sensor reading at the charger's own
+    battery-side terminals, not derived from the battery's BMS at all)
+    are two independent measurements of the same node. The difference
+    approximates total power being drawn by everything else connected
+    to that bus, whether it's fed straight from the charger's output or
+    via the battery.
 
-    The charger's manual states it isn't 100% efficient converting
-    alternator/solar input to battery-side output - without correcting
-    for that, its own internal conversion loss shows up here as a
-    phantom ~10-15W of "other device" draw even when nothing else is
-    connected. CHARGER_EFFICIENCY scales the source term down to the
-    charger's actual output before comparing against the battery, so a
-    fully-accounted-for system (all output going to the battery, nothing
-    else drawing) correctly reads ~0 instead of that phantom baseline.
+    No conversion-efficiency correction needed here (unlike the old
+    version, which compared the charger's ALTERNATOR/SOLAR-side input
+    power against the battery with a fixed assumed efficiency, per
+    Quinn 2026-11-06) - both readings being differenced are already on
+    the battery side of the charger's internal DC-DC conversion, so
+    there's no cross-side gap to correct for, and this is a real
+    measurement rather than a guess.
+
     Used as a fallback when there's no history yet to average (see
     storage.avg_total_power_usage for the smoothed version used normally)."""
     if not battery_data or not charger_data:
@@ -83,12 +86,10 @@ def _compute_total_power_usage_w(battery_data: dict | None, charger_data: dict |
     result = charger_data.get("result")
     if not result:
         return None
-    alt = result.get("alternator", {})
-    panel = result.get("panel", {})
-    total_source_w = (alt.get("p") or 0) + (panel.get("p") or 0)
-    charger_output_w = total_source_w * config.CHARGER_EFFICIENCY
+    batt = result.get("batt", {})
+    charger_battery_side_w = batt.get("p") or 0
     battery_net_w = battery_data.get("power") or 0
-    return round(charger_output_w - battery_net_w, 1)
+    return round(charger_battery_side_w - battery_net_w, 1)
 
 
 _SERVER_START_TIME = time.time()
@@ -111,7 +112,7 @@ async def _get_total_power_1hr_avg() -> float | None:
         return None
     now = time.time()
     if now - _total_power_1hr_cache["computed_at"] >= _TOTAL_POWER_1HR_CACHE_TTL_S:
-        value = await storage.avg_total_power_usage(60, config.CHARGER_EFFICIENCY)
+        value = await storage.avg_total_power_usage(60)
         _total_power_1hr_cache["value"] = round(value, 1) if value is not None else None
         _total_power_1hr_cache["computed_at"] = now
     return _total_power_1hr_cache["value"]
@@ -197,13 +198,15 @@ async def _compute_charge_source_estimate(battery_data: dict | None) -> dict:
         needed_ah = (battery_data.get("nominal_ah") or 0) - (battery_data.get("remaining_ah") or 0)
         if needed_ah <= 0:
             return {"source": "alternator", "alt_hours": 0.0}
-        # The alternator's own output current isn't quite what the
-        # battery actually receives - the charger's DC-DC conversion
-        # loses some of it in transit, same correction
-        # _compute_total_power_usage_w already applies to this exact
-        # source term.
-        battery_side_current = avg_alt * config.CHARGER_EFFICIENCY
-        if battery_side_current <= 0:
+        # The alternator's own (input-side) current isn't what the
+        # battery actually receives - use the charger's own reported
+        # *battery-side* current instead (see avg_batt_current - a real
+        # sensor reading at the charger's own battery-side terminals,
+        # per PROTOCOL.md), not a guessed conversion efficiency applied
+        # to the alternator side (per Quinn 2026-11-06, same reasoning
+        # as _compute_total_power_usage_w).
+        battery_side_current = await storage.avg_batt_current(2)
+        if not battery_side_current or battery_side_current <= 0:
             return {"source": "alternator", "alt_hours": None}
         return {"source": "alternator", "alt_hours": round(needed_ah / battery_side_current, 2)}
     if panel_active:
@@ -235,7 +238,7 @@ async def api_latest():
     if time.time() - _SERVER_START_TIME < 120:
         total_power_2min_avg_w = None
     else:
-        total_power_2min_avg_w = await storage.avg_total_power_usage(2, config.CHARGER_EFFICIENCY)
+        total_power_2min_avg_w = await storage.avg_total_power_usage(2)
         if total_power_2min_avg_w is not None:
             total_power_2min_avg_w = round(total_power_2min_avg_w, 1)
     total_power_1hr_avg_w = await _get_total_power_1hr_avg()
@@ -318,6 +321,17 @@ async def api_data_days(day_starts: str):
         raise HTTPException(400, "day_starts must be a non-empty comma-separated list")
     has_data = await storage.days_with_data(starts)
     return {"days": [{"start": s, "has_data": h} for s, h in zip(starts, has_data)]}
+
+
+@app.get("/api/oldest-sample-ts")
+async def api_oldest_sample_ts():
+    """Lets the day pickers (main history, and the solar generation
+    card's own) know exactly how far back to offer days, instead of
+    guessing a fixed candidate window - retention is governed by
+    storage.MAX_DB_SIZE_BYTES, not a fixed day count, so how far back
+    real data reaches can move over time (per Quinn 2026-11-06)."""
+    ts = await storage.oldest_sample_ts()
+    return {"ts": ts}
 
 
 _solar_energy_cache: dict = {}

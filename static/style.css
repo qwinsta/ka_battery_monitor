@@ -717,10 +717,9 @@ input[type="range"]::-moz-range-thumb {
   flex: none;
   max-width: 100%;
 }
-/* "10 day overview" / "30 day overview" - one-shot actions, not a
-   persistent mode selector (no "active" state to track - picking one
-   just switches the chart below), styled a touch quieter than the day
-   picker they sit beside. */
+/* "10 day overview" / "30 day overview" - styled a touch quieter than
+   the day picker they sit beside at rest, but highlighted while that
+   overview is the one currently showing (2026-11-06). */
 .solar-gen-days-row button {
   font: inherit;
   font-size: 11px;
@@ -732,6 +731,7 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   flex: none;
 }
+.solar-gen-days-row button.active { background: var(--series-solar); border-color: transparent; color: #fff; }
 .solar-gen-total { margin-bottom: 4px; }
 .solar-gen-total-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .solar-gen-total-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--series-solar); }

@@ -1501,6 +1501,18 @@ function solarGenDateLabel(dayStart) {
 // "overview": showing a Last-N-days daily-totals trend instead - see
 // loadSolarGenOverview().
 let solarGenMode = "day";
+// Which overview is currently showing (10 or 30), or null - drives the
+// "10 day overview"/"30 day overview" buttons' highlighted state (per
+// Quinn 2026-11-06: "can you highlight 10 day overview or 30 day
+// overview if I click those?").
+let solarGenOverviewDays = null;
+
+function updateSolarGenOverviewButtonsUI() {
+  const btn10 = document.getElementById("solar-gen-10d-btn");
+  const btn30 = document.getElementById("solar-gen-30d-btn");
+  if (btn10) btn10.classList.toggle("active", solarGenMode === "overview" && solarGenOverviewDays === 10);
+  if (btn30) btn30.classList.toggle("active", solarGenMode === "overview" && solarGenOverviewDays === 30);
+}
 
 // Every day that actually has data (same mechanism, and same
 // fetchDaysWithData() helper, as the main history day picker above) -
@@ -1545,9 +1557,11 @@ function fmtSolarOverviewAxisLabel(wh) {
 
 async function loadSolarGenOverview(daysBack) {
   solarGenMode = "overview";
+  solarGenOverviewDays = daysBack;
   solarGenDayStart = null;
   solarGenIsToday = false; // belt-and-braces alongside the solarGenMode check in the refresh interval below
   renderSolarGenDaySelect(); // clears the day picker's selection
+  updateSolarGenOverviewButtonsUI();
 
   const dateLabelEl = document.getElementById("solar-gen-date");
   if (dateLabelEl) dateLabelEl.textContent = `Last ${daysBack} days`;
@@ -1592,11 +1606,13 @@ const SOLAR_CHART_START_HOUR = 4;
 const SOLAR_CHART_END_HOUR = 20;
 
 async function loadSolarGenChart(dayStart) {
-  solarGenMode = "day"; // back out of the 30-day overview, if that was showing
+  solarGenMode = "day"; // back out of the 10/30-day overview, if that was showing
+  solarGenOverviewDays = null;
   charts.solarGen.yLabelFormatter = fmtSolarAxisLabel;
   solarGenDayStart = dayStart;
   solarGenIsToday = dayStart === localDayStart(0);
   renderSolarGenDaySelect(); // keeps the dropdown's selection in sync however this got called - itself, the main day picker, or the periodic auto-refresh
+  updateSolarGenOverviewButtonsUI();
   const windowStart = dayStart + SOLAR_CHART_START_HOUR * 3600;
   const windowEnd = dayStart + SOLAR_CHART_END_HOUR * 3600;
 

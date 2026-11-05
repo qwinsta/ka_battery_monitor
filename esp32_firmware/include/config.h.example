@@ -71,6 +71,13 @@
 #define BATTERY_POLL_INTERVAL_MS 1000
 #define CHARGER_POLL_INTERVAL_MS 2000
 #define PENDING_COMMAND_POLL_INTERVAL_MS 1500
+// Restart/scan (Settings page) deliberately NOT on the same tight
+// cadence as alt-current above - both are rare, deliberately user-
+// triggered actions, and stacking their blocking HTTP checks onto the
+// same ~1.5s tick the live BLE poll loop depends on risked stalling
+// doBatteryCycle()/doChargerStatusCycle() for seconds on a flaky
+// network, looking exactly like a dropped BLE connection.
+#define RARE_COMMAND_POLL_INTERVAL_MS 5000
 // Device address config (Settings page "Device connections") almost
 // never changes, unlike the above - a slow poll is plenty and keeps
 // this from adding meaningfully to the ESP32's steady-state HTTP chatter.

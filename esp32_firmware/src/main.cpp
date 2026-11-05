@@ -1,14 +1,15 @@
 // KickAss Battery Monitor - ESP32 BLE bridge
 //
 // Connects to the battery and charger directly as a BLE client (same
-// protocols as battery.py/charger.py) and pushes readings to the
-// dashboard server's ingest API (see ../../ingest_poller.py) over WiFi.
-// Exists because many travel/OpenWrt routers have no usable native USB
-// Bluetooth path of their own.
+// protocols as battery.py/charger.py - see ../../PROTOCOL.md) and pushes
+// readings to the dashboard server's ingest API (see ../../ingest_poller.py)
+// over WiFi. Exists because the target GL.iNet router has no usable
+// native USB Bluetooth path - see PROTOCOL.md "GL.iNet router Bluetooth
+// investigation".
 //
-// Confirmed working against real hardware since 2026-09-18. Watch the
-// Serial monitor (115200 baud) for connect/read/push logging if
-// something's misbehaving.
+// Confirmed working against real hardware in the vehicle since
+// 2026-09-18. Watch the Serial monitor (115200 baud) for connect/read/push
+// logging if something's misbehaving.
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -399,7 +400,7 @@ static void checkPendingAltCurrent() {
       reportDoc["result"] = respDoc.as<JsonObject>();
     } else {
       // The charger's own JSON serializer has a known bug (see
-      // charger.py's matching _raw_text fallback) - the
+      // PROTOCOL.md / charger.py's matching _raw_text fallback) - the
       // BLE write+read itself already succeeded above (`ok` is true, so
       // the charger DID accept the new current setting), only its own
       // confirmation response's JSON is malformed. Report this as a

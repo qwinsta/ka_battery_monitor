@@ -1,0 +1,79 @@
+// KickAss Battery Monitor - ESP32 BLE bridge configuration
+// Copy this file to config.h and fill in your own values before
+// building/flashing. config.h is gitignored on purpose - it has your
+// WiFi password in it, and you shouldn't commit that anywhere public.
+#pragma once
+
+// --- WiFi ---
+// Your own 2.4GHz WiFi network - ESP32 hardware is 2.4GHz-only, so if
+// your router has separate 2.4GHz/5GHz networks (common on dual-band
+// routers), make sure this is the 2.4GHz one.
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+
+// --- Dashboard server (run_server_ingest.py, wherever it's running) ---
+// Point this at whatever machine is actually running the dashboard
+// server - your own computer for initial bring-up/testing, or your
+// router's IP once it's deployed there permanently. Port 5000 is
+// run_server_ingest.py's default; change it here if you run the server
+// on a different port.
+#define SERVER_BASE_URL "http://192.168.1.100:5000"
+
+// --- Over-the-air updates ---
+// Lets future firmware updates be pushed over WiFi (see platformio.ini's
+// esp32dev_ota environment) instead of needing a USB cable every time.
+// Pick your own password - it only needs to stop an accidental push
+// from a random device on your network, not resist a determined
+// attacker; your WiFi password and LAN isolation are the real boundary
+// here. Must match platformio.ini's --auth flag if you ever change it.
+#define OTA_HOSTNAME "battmon-esp32"
+#define OTA_PASSWORD "CHANGE_ME_OTA_PASSWORD"
+
+// --- Device addresses ---
+// Real BLE MAC addresses (colon-separated) for your battery and
+// charger. Find them with `python3 ble_tool.py scan` (run from the
+// project root, ideally near the devices) before your first flash - or
+// just leave these placeholders and use the dashboard's own "Scan for
+// devices" button in Settings once it's up and running.
+//
+// These are only the COMPILE-TIME DEFAULTS - the dashboard's Settings
+// page ("Device connections") can point this at a different
+// battery/charger at any time without reflashing (see
+// ble_battery.cpp/ble_charger.cpp's batterySetMacAddress()/
+// chargerSetMacAddress() and main.cpp's checkDeviceConfig()). These
+// #defines only matter for a completely fresh ESP32 that's never
+// received a setting from the dashboard yet.
+#define BATTERY_MAC_ADDRESS "AA:BB:CC:DD:EE:FF"
+#define CHARGER_MAC_ADDRESS "AA:BB:CC:DD:EE:FF"
+// Same MAC, no colons, uppercase - used inside the charger's own
+// JSON-RPC command payloads (see charger.py / PROTOCOL.md). Must match
+// CHARGER_MAC_ADDRESS above with the colons stripped - only matters as
+// the initial static-initializer value; ble_charger.cpp derives it
+// automatically from then on (see deriveMacPlain()).
+#define CHARGER_MAC_PLAIN "AABBCCDDEEFF"
+
+// --- BLE device scanning (Settings page "Scan for devices") ---
+// Advertised-name fragments used to recommend a discovered device as
+// the battery or charger, rather than leaving someone to guess from a
+// bare list of MAC addresses - mirrors ble_tool.py's TARGET_NAME_HINTS
+// on the desktop side (see main.cpp's classifyScanResult()). Update
+// both if your own devices advertise under different names (check with
+// `python3 ble_tool.py scan`). A one-off, disconnect-everything-and-
+// scan action (see main.cpp's checkPendingScan()) - not something run
+// during normal operation, so it's fine for it to briefly interrupt
+// live battery/charger readings.
+#define SCAN_CHARGER_NAME_HINT "KADCDC"
+#define SCAN_BATTERY_NAME_HINT "LT23SX"
+#define SCAN_DURATION_S 8
+#define SCAN_MAX_DEVICES 20
+
+// --- Timing ---
+#define BATTERY_POLL_INTERVAL_MS 1000
+#define CHARGER_POLL_INTERVAL_MS 2000
+#define PENDING_COMMAND_POLL_INTERVAL_MS 1500
+// Device address config (Settings page "Device connections") almost
+// never changes, unlike the above - a slow poll is plenty and keeps
+// this from adding meaningfully to the ESP32's steady-state HTTP chatter.
+#define DEVICE_CONFIG_POLL_INTERVAL_MS 30000
+#define BLE_CONNECT_TIMEOUT_MS 15000
+#define HTTP_TIMEOUT_MS 5000

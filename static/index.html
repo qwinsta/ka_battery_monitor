@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KickAss Battery Monitor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <header>
+    <h1>KickAss Battery Monitor</h1>
+    <div class="conn-dots">
+      <span class="conn-dot"><span class="dot" id="dot-battery"></span> Battery</span>
+      <span class="conn-dot"><span class="dot" id="dot-charger"></span> Charger</span>
+    </div>
+    <div class="solar-today" title="Total solar energy captured today - resets at local midnight">
+      <span class="solar-today-icon">☀️</span>
+      <span id="solar-today-value">--</span>
+      <span class="solar-today-label">today</span>
+    </div>
+    <div class="view-toggle">
+      <button data-view="mobile">Mobile view</button>
+      <button data-view="desktop">View full desktop</button>
+    </div>
+  </header>
+
+  <nav class="page-tabs">
+    <button data-page="dashboard" class="active">Dashboard</button>
+    <button data-page="settings">Settings</button>
+  </nav>
+
+  <!-- ================= DASHBOARD ================= -->
+  <div class="page" id="page-dashboard">
+
+    <section class="top-grid">
+      <div class="power-panel">
+        <svg class="flow-svg" viewBox="0 0 320 140" aria-hidden="true">
+          <path id="flow-alt" class="flow-path flow-alt" d="M 50,66 C 50,100 130,115 152,126"></path>
+          <path id="flow-solar" class="flow-path flow-solar" d="M 160,66 L 160,126"></path>
+          <path id="flow-batt" class="flow-path flow-batt" d="M 270,66 C 270,100 190,115 168,126"></path>
+          <circle cx="160" cy="130" r="4" class="flow-hub"></circle>
+
+          <text x="50" y="20" text-anchor="middle" class="flow-emoji">⚡</text>
+          <text x="50" y="44" text-anchor="middle" class="flow-node-label">ALTERNATOR</text>
+          <text x="50" y="59" text-anchor="middle" class="flow-node-val" id="flow-val-alt">--</text>
+
+          <text x="160" y="20" text-anchor="middle" class="flow-emoji">☀️</text>
+          <text x="160" y="44" text-anchor="middle" class="flow-node-label">SOLAR</text>
+          <text x="160" y="59" text-anchor="middle" class="flow-node-val" id="flow-val-solar">--</text>
+
+          <text x="270" y="20" text-anchor="middle" class="flow-emoji">🔋</text>
+          <text x="270" y="44" text-anchor="middle" class="flow-node-label">BATTERY</text>
+          <text x="270" y="59" text-anchor="middle" class="flow-node-val" id="flow-val-batt">--</text>
+        </svg>
+        <div class="hero-power-label">Total power usage</div>
+        <div class="hero-power-value"><span id="total-power-value">--</span><span class="unit">W</span></div>
+        <div class="hero-power-avg">2-min avg: <span id="total-power-avg-value">--</span> W</div>
+        <div class="hero-power-avg">1-hour avg: <span id="total-power-1hr-avg-value">--</span> W</div>
+        <div class="hero-power-sub">Everything connected - alternator + solar output less what's going into the battery</div>
+      </div>
+
+      <div class="battery-panel">
+        <div class="soc-dial-wrap">
+          <svg class="soc-dial" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="soc-dial-track" cx="60" cy="60" r="52"></circle>
+            <circle class="soc-dial-fill" id="soc-dial-fill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="soc-dial-center">
+            <div class="soc-dial-pct"><span id="soc-pct">--</span><span class="unit">%</span></div>
+            <div class="soc-dial-label">State of charge</div>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="value"><span id="hero-voltage">--</span><span class="unit">V</span></div>
+            <div class="label">Battery voltage</div>
+          </div>
+          <div class="hero-stat">
+            <div class="value"><span id="hero-current">--</span><span class="unit">A</span></div>
+            <div class="label">Battery current</div>
+          </div>
+          <div class="hero-stat">
+            <div class="value"><span id="hero-power">--</span><span class="unit">W</span></div>
+            <div class="label">Battery power</div>
+          </div>
+          <div class="hero-stat">
+            <div class="value" id="hero-time-remaining">--</div>
+            <div class="label" id="hero-time-remaining-label">Time remaining</div>
+          </div>
+        </div>
+        <!-- Charging source estimate - alternator and solar are never
+             both active on this vehicle (2026-11-06), so this is an
+             either/or, not two stats shown together. Which block shows
+             is driven by data.charge_source from /api/latest - see
+             app.js's updateChargeSourceEstimate(). -->
+        <div class="sun-hours-estimate" id="charge-source-alt" hidden>
+          Alternator charging at <span id="alt-current-live">--</span>A - est. <span id="alt-hours-to-full">--</span> to full
+          <div class="sun-hours-note">Live rate - updates as alternator output varies with RPM/electrical load, not a fixed assumption</div>
+        </div>
+        <div class="sun-hours-estimate" id="charge-source-solar" hidden title="Rough estimate only, not a live measurement - 'sun-hours' means hours at 85% of this panel's rated peak (a typical real-world sunny-day output, set on the Settings page), not clock hours, so it's naturally faster than Time to full above (which uses the actual current rate, usually below peak). Actual time depends on real weather and other loads.">
+          Est. <span id="sun-hours-to-full">--</span> peak sun-hours to full (<span id="sun-hours-panel-w">--</span>W panel)
+          <div class="sun-hours-note">Assumes a sunny day at 85% of rated panel output - not a weather forecast</div>
+        </div>
+        <div class="sun-hours-estimate" id="charge-source-none" hidden>
+          <div class="sun-hours-note">Not currently charging from the alternator or solar</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="chart-card solar-gen-card">
+      <div class="chart-title">
+        <h4><span id="solar-gen-date">Today</span></h4>
+        <!-- W/kW here (and the chart's own y-axis scale) is derived
+             purely from the actual data, not fixed to this panel's
+             current 200W rating - stays correct if it's ever upgraded. -->
+        <span class="solar-gen-unit" id="solar-gen-unit"></span>
+      </div>
+      <div class="solar-gen-days-row">
+        <div class="solar-gen-days" id="solar-gen-days"><!-- populated by app.js --></div>
+        <select class="solar-gen-more" id="solar-gen-more">
+          <option value="">More&hellip;</option>
+          <option value="10d">Last 10 days</option>
+          <option value="30d">30 day overview</option>
+        </select>
+      </div>
+      <div class="solar-gen-total">
+        <div class="solar-gen-total-label">Total Generated</div>
+        <div class="solar-gen-total-value" id="solar-gen-total-value">--</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas class="chart" id="chart-solar-gen"></canvas>
+        <div class="tooltip"></div>
+      </div>
+    </div>
+
+    <div class="grid-main">
+      <div class="tile">
+        <div class="accent" style="background:var(--series-battery)"></div>
+        <h3><span class="swatch" style="background:var(--series-battery)"></span>Battery</h3>
+        <div class="row"><span class="k">Voltage</span><span class="v" id="tile-batt-voltage">--</span></div>
+        <div class="row"><span class="k">Current</span><span class="v" id="tile-batt-current">--</span></div>
+        <div class="row"><span class="k">Power</span><span class="v" id="tile-batt-power">--</span></div>
+        <div class="row"><span class="k">State</span><span class="v" id="tile-batt-state">--</span></div>
+        <div class="row"><span class="k">Temperature</span><span class="v" id="tile-batt-temp">--</span></div>
+        <div class="row"><span class="k">Remaining</span><span class="v" id="tile-batt-remaining">--</span></div>
+        <div class="row desktop-only"><span class="k">Nominal capacity</span><span class="v" id="tile-batt-nominal">--</span></div>
+        <div class="row desktop-only"><span class="k">Cycles</span><span class="v" id="tile-batt-cycles">--</span></div>
+        <div class="row desktop-only"><span class="k">Cells</span><span class="v" id="tile-batt-cells">--</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="accent" style="background:var(--series-alt)"></div>
+        <h3><span class="swatch" style="background:var(--series-alt)"></span>Alternator</h3>
+        <div class="row"><span class="k">Voltage</span><span class="v" id="tile-alt-voltage">--</span></div>
+        <div class="row"><span class="k">Current</span><span class="v" id="tile-alt-current">--</span></div>
+        <div class="row"><span class="k">Power</span><span class="v" id="tile-alt-power">--</span></div>
+        <div class="row desktop-only"><span class="k">Charger temp</span><span class="v" id="tile-temp">--</span></div>
+        <div class="row"><span class="k">Charge stage</span><span class="v" id="tile-charge-stage">--</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="accent" style="background:var(--series-solar)"></div>
+        <h3><span class="sun-icon">☀️</span>Solar panel</h3>
+        <div class="row"><span class="k">Voltage</span><span class="v" id="tile-solar-voltage">--</span></div>
+        <div class="row"><span class="k">Current</span><span class="v" id="tile-solar-current">--</span></div>
+        <div class="row"><span class="k">Power</span><span class="v" id="tile-solar-power">--</span></div>
+        <div class="row"><span class="k">Today</span><span class="v" id="tile-solar-today">--</span></div>
+        <div class="row"><span class="k">Yesterday</span><span class="v" id="tile-solar-yesterday">--</span></div>
+        <div class="row desktop-only"><span class="k">Last 5 days</span><span class="v" id="tile-solar-5day">--</span></div>
+        <div class="row desktop-only"><span class="k">Last 10 days</span><span class="v" id="tile-solar-10day">--</span></div>
+        <div class="row"><span class="k">All-time total</span><span class="v" id="tile-solar-alltime">--</span></div>
+      </div>
+    </div>
+
+    <div class="history-header">
+      <h2>History</h2>
+      <div class="history-controls">
+        <div class="range-tabs">
+          <button data-range="15m" class="active">15m</button>
+          <button data-range="30m">30m</button>
+          <button data-range="1h">1h</button>
+          <button data-range="6h">6h</button>
+          <button data-range="12h">12h</button>
+          <button data-range="24h">24h</button>
+          <button id="custom-range-toggle">Custom&hellip;</button>
+        </div>
+        <button id="scroll-to-live" class="scroll-to-live" hidden>&#8635; Scroll to Live</button>
+      </div>
+    </div>
+
+    <div class="day-picker">
+      <span class="day-picker-label">Browse a day:</span>
+      <!-- A single whole calendar day (midnight-to-midnight), not a
+           scrollable multi-day window - see the 2026-10-14 incident:
+           the old "7d"/"10d" range-tab buttons drove continuous,
+           open-ended multi-day queries that ran every second while
+           live, which was a direct contributor to the production
+           crash. A dropdown of individual bounded days replaced them,
+           same reasoning as the solar generation card's own "Last 30
+           days" overview further up the page. -->
+      <select class="day-picker-select" id="day-picker-select"><!-- populated by app.js --></select>
+    </div>
+
+    <div class="custom-range-panel" id="custom-range-panel" hidden>
+      <label>From <input type="datetime-local" id="custom-range-from"></label>
+      <label>To <input type="datetime-local" id="custom-range-to"></label>
+      <button id="custom-range-apply">Apply</button>
+    </div>
+
+    <p class="drag-hint">
+      <span class="live-badge" id="live-badge">&#9679; LIVE</span>
+      <!-- Only shown while browsing history (not live) - tells you which
+           date you're actually looking at regardless of how you got
+           there (picked a day then zoomed with 6h/12h/etc, or dragged a
+           chart across a day boundary) - see app.js's
+           updateViewingDateLabel() (2026-10-14: "I don't actually know
+           which day I'm scrolling around" once a picked day is zoomed
+           into, since that cleared the day picker's own selection). -->
+      <span class="viewing-date-label" id="viewing-date-label" hidden></span>
+      Drag any graph left or right to scroll through history
+      <!-- On touch, tapping a graph shows its value by default rather
+           than scrolling (a mouse hover and a mouse drag are naturally
+           different gestures; touch-and-move is the same gesture either
+           way, so one of the two has to be the default - see
+           touchPanEnabled in app.js). This switches touch to drag-to-
+           scroll instead, for whenever that's what's actually wanted. -->
+      <button class="touch-pan-toggle" id="touch-pan-toggle" title="On a touchscreen, tapping a graph shows its value by default - turn this on to drag-scroll with touch instead">Touch: tap to inspect</button>
+    </p>
+
+    <div class="chart-card">
+      <div class="chart-title"><h4>Total power usage</h4></div>
+      <div class="chart-wrap">
+        <canvas class="chart" id="chart-loads"></canvas>
+        <div class="tooltip"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">
+        <h4>Battery current, power &amp; charge</h4>
+        <div class="legend">
+          <span class="item"><span class="swatch" style="background:var(--series-battery)"></span>Current (A, left)</span>
+          <span class="item"><span class="swatch" style="background:var(--series-loads)"></span>Power (W, right)</span>
+          <span class="item"><span class="swatch" style="background:var(--series-alt)"></span>State of charge</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas class="chart" id="chart-batt-current"></canvas>
+        <div class="tooltip"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">
+        <h4>Charging sources</h4>
+        <div class="legend">
+          <span class="item"><span class="swatch" style="background:var(--series-alt)"></span>Alternator</span>
+          <span class="item"><span class="swatch" style="background:var(--series-solar)"></span>Solar</span>
+          <span class="item legend-note">Solid = current (A, left) &middot; Dashed = power (W, right)</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas class="chart" id="chart-source-current"></canvas>
+        <div class="tooltip"></div>
+      </div>
+    </div>
+
+    <footer>
+      Assumes a 10% DC-DC conversion loss (charger manual: not 100% efficient converting alternator/solar input to battery-side output) when calculating total power usage.<br>
+      KickAss Battery Monitor &middot; <a href="https://github.com/qwinsta/ka_battery_monitor" target="_blank" rel="noopener">GitHub</a> &middot; <a href="/docs">API</a>
+    </footer>
+  </div>
+
+  <!-- ================= SETTINGS ================= -->
+  <div class="page" id="page-settings" hidden>
+    <div class="control-card">
+      <div class="head">
+        <h3>Restart BLE receiver</h3>
+      </div>
+      <p class="control-note">
+        If battery or charger data goes missing or gets stuck and doesn't come back on its own, use this to restart
+        the ESP32 - it briefly drops the connection to both devices and reconnects fresh, same as unplugging and
+        replugging it. Takes about 15-20 seconds.
+      </p>
+      <button id="restart-ble-btn">Restart BLE</button>
+      <div class="save-state" id="restart-ble-state"></div>
+    </div>
+
+    <div class="control-card">
+      <div class="head">
+        <h3>Alternator max current</h3>
+        <span class="current-val" id="alt-current-value">-- A</span>
+      </div>
+      <p class="control-note">Kept on its own tab deliberately - this changes the physical charger setting, not just a display option.</p>
+      <input type="range" id="alt-current-slider" min="5" max="56" value="40" step="1">
+      <div class="range-labels"><span>5A</span><span>56A</span></div>
+      <div class="save-state" id="alt-current-save-state"></div>
+    </div>
+
+    <div class="control-card">
+      <div class="head">
+        <h3>Solar panel max capacity</h3>
+      </div>
+      <p class="control-note">Sets the Solar Generation chart's fixed y-axis (0 to this value) - update it if the panel is ever upgraded.</p>
+      <div class="number-input-row">
+        <input type="number" id="solar-panel-max-w-input" min="1" max="100000" step="1">
+        <span class="unit">W</span>
+        <button id="solar-panel-max-w-save">Save</button>
+      </div>
+      <div class="save-state" id="solar-panel-max-w-save-state"></div>
+    </div>
+
+    <div class="control-card">
+      <div class="head">
+        <h3>Device connections</h3>
+      </div>
+      <p class="control-note">
+        The BLE MAC addresses the ESP32 bridge connects to for the battery and charger - change these to point this
+        dashboard at different (or someone else's) devices without reflashing firmware. Format: AA:BB:CC:DD:EE:FF.
+        Each applies independently, and reconnects the ESP32 to that device - double-check before applying.
+      </p>
+
+      <div class="device-address-block">
+        <div class="device-address-row">
+          <label for="battery-mac-input">Battery</label>
+          <input type="text" id="battery-mac-input" class="mac-input" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false" autocapitalize="characters">
+          <button id="battery-mac-apply">Apply</button>
+        </div>
+        <!-- Previously-applied addresses, not the currently-selected one
+             (the fields above already show that) - picking an entry
+             here only fills the input, same as a scan result's "Use
+             this" button; Apply above still has to be clicked (and
+             confirmed) to actually switch to it. -->
+        <select class="device-mac-history" id="battery-mac-history"><option value="">Previous devices&hellip;</option></select>
+        <div class="save-state" id="battery-mac-save-state"></div>
+      </div>
+
+      <div class="device-address-block">
+        <div class="device-address-row">
+          <label for="charger-mac-input">Charger</label>
+          <input type="text" id="charger-mac-input" class="mac-input" placeholder="AA:BB:CC:DD:EE:FF" spellcheck="false" autocapitalize="characters">
+          <button id="charger-mac-apply">Apply</button>
+        </div>
+        <select class="device-mac-history" id="charger-mac-history"><option value="">Previous devices&hellip;</option></select>
+        <div class="save-state" id="charger-mac-save-state"></div>
+      </div>
+    </div>
+
+    <div class="control-card">
+      <div class="head">
+        <h3>Scan for devices</h3>
+      </div>
+      <p class="control-note">
+        Finds nearby BLE devices to help set up a battery/charger for the first time - useful if you don't already
+        know the MAC address. This disconnects the ESP32 from whatever it's currently connected to for a few
+        seconds while it scans, so it's meant for initial setup, not something to run routinely.
+      </p>
+      <button id="scan-devices-btn">Scan for devices</button>
+      <div class="save-state" id="scan-devices-state"></div>
+      <div class="scan-results" id="scan-results"><!-- populated by app.js --></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

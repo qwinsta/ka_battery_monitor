@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Your real device config - has your WiFi password in it.
+# Copy esp32_firmware/include/config.h.example to config.h and edit that.
+esp32_firmware/include/config.h
+
+# PlatformIO build artifacts
+esp32_firmware/.pio/
+esp32_firmware/.pio_venv/
+
+# Live/local data - specific to a running instance, not the project itself
+history.sqlite3
+history.sqlite3-*
+emulator/emulator_history.sqlite3
+emulator/emulator_history.sqlite3-*
+
+# OS cruft
+.DS_Store

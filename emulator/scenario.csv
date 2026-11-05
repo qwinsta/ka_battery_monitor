@@ -1,0 +1,27 @@
+# KickAss Battery Monitor - emulator scenario,,,
+# One row = inputs held for duration_s simulated seconds, then moves to,,
+# the next row (loops back to the first at the end).,,,
+#   load_w        - total power draw of everything connected (W),,,
+#   solar_w       - solar panel input (W, realistic range ~1-160),,
+#   alt_current_a - alternator/DC-DC output current (A, 5-56),,
+#   duration_s    - how long to hold these inputs (simulated seconds),,,
+#,,,
+# Story: idle, then the real induction-hob test repeated several times,,
+# (2000W for 8 minutes each, validated against the real ~10%-per-boil,,
+# observation) with short rests between, walking the battery down past,,
+# the 10% mark so you can see the low-voltage protection behaviour -,,,
+# then a long recharge showing recovery.,,,
+load_w,solar_w,alt_current_a,duration_s
+0,150,0,120
+500,150,40,480
+500,100,0,120
+500,100,40,480
+500,150,40,120
+2000,150,40,480
+0,0,40,120
+2000,0,0,480
+0,0,0,120
+2000,0,0,480
+0,0,0,180
+0,80,40,3600
+0,20,0,120

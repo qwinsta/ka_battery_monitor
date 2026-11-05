@@ -1,0 +1,788 @@
+/* KickAss Battery Monitor - dashboard styles
+   Palette per the dataviz skill's validated default (references/palette.md):
+   entity -> color is fixed throughout: battery=blue, alternator=orange,
+   solar=aqua, other-loads=yellow. Status colors (good/warning/critical)
+   are reserved separately, used only for the SOC ring's state. */
+
+:root {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --surface-2: #222221;
+  --page: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+
+  --series-battery: #3987e5;
+  --series-alt: #d95926;
+  --series-solar: #199e70;
+  --series-loads: #c98500;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  --radius: 14px;
+  --gap: 12px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --surface-2: #f2f2ef;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --gridline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+
+    --series-battery: #2a78d6;
+    --series-alt: #eb6834;
+    --series-solar: #1baf7a;
+    --series-loads: #eda100;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 12px 16px 40px;
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+}
+
+/* ---------- header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 8px 0 16px;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.conn-dots { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); }
+.conn-dot { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-critical); flex: none; }
+.dot.ok { background: var(--status-good); }
+
+.solar-today {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.solar-today-icon { font-size: 13px; line-height: 1; }
+.solar-today-label { color: var(--text-muted); font-weight: 500; }
+
+.view-toggle {
+  display: flex;
+  gap: 6px;
+}
+.view-toggle button {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.view-toggle button.active {
+  background: var(--series-battery);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* ---------- layout modes ---------- */
+.app[data-view="mobile"] .desktop-only { display: none; }
+.app[data-view="mobile"] .grid-main { grid-template-columns: 1fr; }
+.app[data-view="desktop"] { max-width: 1400px; }
+
+/* ---------- page tabs (Dashboard / Settings) ---------- */
+.page-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-2);
+  padding: 3px;
+  border-radius: 999px;
+  width: fit-content;
+  margin-bottom: 16px;
+}
+.page-tabs button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.page-tabs button.active { background: var(--series-battery); color: #fff; }
+
+/* ---------- top grid: power flow (left) + battery SOC (right) ---------- */
+.top-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+@media (max-width: 700px) {
+  .top-grid { grid-template-columns: 1fr; }
+}
+.app[data-view="mobile"] .top-grid { grid-template-columns: 1fr; }
+
+.power-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 24px;
+  text-align: center;
+}
+.hero-power-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.hero-power-value {
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--series-loads);
+  transition: color 0.3s;
+}
+.hero-power-value .unit { font-size: 22px; font-weight: 600; opacity: 0.7; margin-left: 4px; }
+.hero-power-avg {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+.hero-power-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 480px;
+  margin: 6px auto 0;
+  line-height: 1.4;
+}
+
+/* ---------- power flow diagram ---------- */
+.flow-svg { width: 100%; max-width: 360px; height: auto; display: block; margin: 0 auto 4px; }
+.flow-emoji { font-size: 18px; }
+.flow-node-label {
+  font-size: 8px; font-weight: 700; fill: var(--text-muted);
+  letter-spacing: 0.06em; font-family: system-ui, sans-serif;
+}
+.flow-node-val {
+  font-size: 12px; font-weight: 700; fill: var(--text-primary);
+  font-variant-numeric: tabular-nums; font-family: system-ui, sans-serif;
+}
+.flow-path {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 5 8;
+  opacity: 0.12;
+  transition: opacity 0.4s ease;
+  /* No animation by default - a source with no power should sit fully
+     still, not just dimmed-but-moving. Confirmed live 2026-09-14
+     (screenshot showed the idle alternator line still animating). */
+}
+.flow-path.active {
+  opacity: 0.95;
+  animation: flow-dash 0.8s linear infinite;
+}
+.flow-path.reverse { animation-direction: reverse; }
+.flow-path.flow-alt { stroke: var(--series-alt); }
+.flow-path.flow-solar { stroke: var(--series-solar); }
+.flow-path.flow-batt { stroke: var(--series-battery); }
+.flow-hub { fill: var(--series-loads); }
+@keyframes flow-dash { to { stroke-dashoffset: -26; } }
+@media (prefers-reduced-motion: reduce) {
+  .flow-path { animation: none; }
+}
+
+/* ---------- battery panel: SOC dial + voltage/current/power/time ---------- */
+.battery-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.soc-dial-wrap { position: relative; width: 148px; height: 148px; flex: none; }
+.soc-dial { width: 100%; height: 100%; transform: rotate(-90deg); }
+.soc-dial-track { fill: none; stroke: var(--gridline); stroke-width: 10; }
+.soc-dial-fill {
+  fill: none;
+  stroke: var(--status-good);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease, stroke 0.6s ease;
+}
+.soc-dial-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.soc-dial-pct { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+.soc-dial-pct .unit { font-size: 15px; font-weight: 600; opacity: 0.7; margin-left: 1px; }
+.soc-dial-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.hero-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+.hero-stat { text-align: center; }
+.hero-stat .value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+.hero-stat .unit { font-size: 12px; font-weight: 500; opacity: 0.6; margin-left: 2px; }
+.hero-stat .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+/* Deliberately smaller/muted than the .hero-stat figures above - this is
+   a rough illustrative estimate (fixed assumed Wh/day, not a real
+   measurement), not a peer-level live stat. */
+.sun-hours-estimate {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.sun-hours-estimate span { font-weight: 700; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.sun-hours-note { font-size: 10px; color: var(--text-muted); margin-top: 2px; font-weight: 400; }
+
+/* ---------- stat tile grid ---------- */
+.grid-main {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap);
+  margin-bottom: 20px;
+}
+
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.tile .accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.tile h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tile .swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.tile .sun-icon { font-size: 15px; line-height: 1; flex: none; }
+.tile .row { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; }
+.tile .row .k { font-size: 12px; color: var(--text-muted); }
+.tile .row .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+
+/* ---------- slider control ---------- */
+.control-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.control-card .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.control-card h3 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.control-card .current-val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.control-card .save-state { font-size: 11px; color: var(--text-muted); height: 14px; }
+.control-card .save-state.saving { color: var(--status-warning); }
+.control-card .save-state.saved { color: var(--status-good); }
+.control-card .save-state.error { color: var(--status-critical); }
+.control-card .control-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.4; }
+
+.number-input-row { display: flex; align-items: center; gap: 8px; }
+.number-input-row input[type="number"] {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  width: 110px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.number-input-row .unit { font-size: 13px; color: var(--text-muted); }
+.number-input-row button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--series-battery);
+  color: #fff;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.device-address-block { margin-bottom: 14px; }
+.device-address-block:last-child { margin-bottom: 0; }
+.device-address-row { display: flex; align-items: center; gap: 8px; }
+.device-address-row label { font-size: 13px; color: var(--text-secondary); width: 60px; flex: none; }
+.mac-input {
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  text-transform: uppercase;
+}
+.mac-input.invalid { border-color: var(--status-critical); }
+.device-address-row button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--series-battery);
+  color: #fff;
+  cursor: pointer;
+  flex: none;
+}
+.device-address-block .save-state { margin-top: 4px; }
+.device-mac-history {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 8px;
+  margin-top: 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  max-width: 100%;
+}
+
+#scan-devices-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--series-battery);
+  color: #fff;
+  cursor: pointer;
+}
+/* Amber, not the usual blue - a recovery action, not a routine one,
+   worth being visually distinct from the rest of the settings page. */
+#restart-ble-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--status-warning);
+  color: #1a1200;
+  cursor: pointer;
+}
+#restart-ble-btn:disabled { opacity: 0.6; cursor: default; }
+.scan-results { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.scan-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-wrap: wrap;
+}
+.scan-result-row.recommended { border-color: var(--series-battery); }
+.scan-result-name { font-weight: 600; font-size: 13px; }
+.scan-result-address {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.scan-result-rssi { font-size: 11px; color: var(--text-muted); }
+.scan-result-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--series-battery);
+  color: #fff;
+}
+.scan-result-row .use-buttons { margin-left: auto; display: flex; gap: 6px; }
+.scan-result-row .use-buttons button {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 34px;
+  -webkit-appearance: none;
+  background: transparent;
+  margin: 4px 0;
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--gridline);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--series-alt);
+  border: 3px solid var(--surface-1);
+  box-shadow: 0 0 0 1px var(--border);
+  margin-top: -10px;
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--gridline); }
+input[type="range"]::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--series-alt); border: 3px solid var(--surface-1);
+  cursor: pointer;
+}
+.range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ---------- history section ---------- */
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 24px 0 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.history-header h2 { font-size: 15px; margin: 0; font-weight: 700; }
+
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.scroll-to-live {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--status-warning);
+  color: #1a1a19;
+  cursor: pointer;
+  flex: none;
+  white-space: nowrap;
+}
+
+.touch-pan-toggle {
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.touch-pan-toggle.on { background: var(--series-battery); border-color: transparent; color: #fff; }
+
+.custom-range-panel {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.custom-range-panel label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: var(--text-muted);
+  gap: 4px;
+}
+.custom-range-panel input {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+.custom-range-panel button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--series-battery);
+  color: #fff;
+  cursor: pointer;
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-right: 6px;
+}
+.live-badge.on { color: var(--status-good); }
+
+/* Which date is actually being shown while browsing history (not live) -
+   see the [hidden] toggle in app.js's updateViewingDateLabel(). */
+.viewing-date-label {
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-right: 6px;
+}
+
+.range-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface-2);
+  padding: 3px;
+  border-radius: 999px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.range-tabs::-webkit-scrollbar { display: none; }
+.range-tabs button {
+  font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px;
+  border: none; background: transparent; color: var(--text-secondary); cursor: pointer;
+  flex: none;
+}
+.range-tabs button.active { background: var(--series-battery); color: #fff; }
+
+/* ---------- day picker (browse a specific past day) ---------- */
+.day-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.day-picker-label { font-size: 11px; color: var(--text-muted); flex: none; }
+/* A dropdown rather than a row of up to 10 buttons (2026-10-14) - a day
+   with no data is still selectable (shows an honest empty chart), just
+   labeled "(no data)" in its option text rather than a colored dot,
+   since a <select>'s native options can't carry arbitrary markup. */
+.day-picker-select {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.drag-hint { font-size: 11px; color: var(--text-muted); margin: 0 0 10px; }
+
+.chart-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px 8px;
+  margin-bottom: var(--gap);
+}
+.chart-card .chart-title {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 6px; flex-wrap: wrap;
+}
+.chart-card h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.legend { display: flex; gap: 12px; font-size: 11px; color: var(--text-secondary); }
+.legend .item { display: flex; align-items: center; gap: 5px; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.legend .legend-note { color: var(--text-muted); }
+
+/* ---------- solar generation chart (Tesla-app-style filled area) ---------- */
+.solar-gen-card { margin-bottom: var(--gap); }
+.solar-gen-unit { margin-left: auto; font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.solar-gen-days-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.solar-gen-days {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.solar-gen-days::-webkit-scrollbar { display: none; }
+.solar-gen-days button {
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex: none;
+}
+.solar-gen-days button.active { background: var(--series-solar); border-color: transparent; color: #fff; }
+/* "More..." - a one-shot action menu (currently just "Last 30 days"),
+   not a persistent mode selector, so it's styled a touch quieter than
+   the day buttons it sits beside. */
+.solar-gen-more {
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: none;
+}
+.solar-gen-total { margin-bottom: 4px; }
+.solar-gen-total-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.solar-gen-total-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--series-solar); }
+
+/* Fixed CSS height is load-bearing, not cosmetic: app.js sets
+   canvas.height (the bitmap) to clientHeight*devicePixelRatio for retina
+   sharpness. Without an explicit CSS height here, the canvas's own
+   layout height would be driven by that same attribute - creating a
+   feedback loop where every redraw doubled the canvas's height. Confirmed
+   live 2026-09-14 ("desktop graphs enormous and too tall"). */
+canvas.chart { width: 100%; height: 150px; display: block; touch-action: pan-y; cursor: grab; }
+canvas.chart:active { cursor: grabbing; }
+/* A bit taller again on desktop, where there's vertical room to spare -
+   mobile keeps the more modest height above (per Quinn 2026-09-30). */
+.app[data-view="desktop"] canvas.chart { height: 200px; }
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  white-space: nowrap;
+  transform: translate(-50%, -110%);
+  visibility: hidden;
+  z-index: 5;
+}
+.chart-wrap { position: relative; }
+
+footer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 24px 0 8px;
+}
+footer a { color: var(--text-muted); }
+footer a:hover { color: var(--text-secondary); }
+
+@media (max-width: 420px) {
+  .battery-panel { padding: 16px; }
+  .soc-dial-wrap { width: 120px; height: 120px; }
+  .soc-dial-pct { font-size: 24px; }
+}

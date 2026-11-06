@@ -478,29 +478,20 @@ void loop() {
     checkPendingAltCurrent();
   }
 
-  // Restart and scan checks used to run on the same tight
-  // PENDING_COMMAND_POLL_INTERVAL_MS tick as alt-current above - that
-  // meant every ~1.5s tick made up to 3 sequential blocking HTTP calls
-  // instead of 1, and on this network (already confirmed flaky more
-  // than once today - OTA failures, ping jitter) any one of those
-  // stalling for its full HTTP_TIMEOUT_MS could stall the whole loop()
-  // for seconds, during which doBatteryCycle()/doChargerStatusCycle()
-  // never run at all - looking exactly like a dropped BLE connection
-  // even though the real cause was this loop never getting back around
-  // to servicing it. Moved to their own slower, separate cadence
-  // (RARE_COMMAND_POLL_INTERVAL_MS) since both are rare, deliberately
-  // user-triggered actions from the Settings page - a few seconds'
-  // extra latency to notice one is a complete non-issue, unlike
-  // stacking it onto the cadence the live BLE data stream depends on
-  // (confirmed live 2026-11-06, per Quinn: "it's something new that we
-  // have introduced to the system code").
+  // Restart and scan checks deliberately NOT on the same tight
+  // PENDING_COMMAND_POLL_INTERVAL_MS tick as alt-current above - see
+  // RARE_COMMAND_POLL_INTERVAL_MS's own comment in config.h. (A
+  // diagnostic build on 2026-11-06 briefly disabled this, along with
+  // device-config below, to test whether any of this project's newer
+  // WiFi polling was contributing to the battery's BLE connection
+  // repeatedly failing - it wasn't: disabling all three made the
+  // battery noticeably worse, not better (zero successful connections
+  // in a 150s test, vs. occasional drops with everything enabled),
+  // which rules out this code as the cause. Restored here.)
   if (now - g_lastRareCommandCheck >= RARE_COMMAND_POLL_INTERVAL_MS) {
     g_lastRareCommandCheck = now;
-    // Restart first - if one's pending, ESP.restart() cuts this tick
-    // (and everything else) off immediately, so no reason to check scan
-    // first only to have it discarded by a reboot anyway.
     checkPendingRestart();
-    checkPendingScan();  // blocks for SCAN_DURATION_S if a scan is actually pending - see its own comment
+    checkPendingScan();
   }
 
   if (now - g_lastChargerStatusPoll >= CHARGER_POLL_INTERVAL_MS) {
